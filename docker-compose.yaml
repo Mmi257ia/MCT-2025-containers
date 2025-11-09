@@ -11,8 +11,10 @@ services:
         condition: service_completed_successfully
 
   db:
-    image: "postgres:alpine"
+    image: "postgres:18-alpine"
     env_file: "./env_vars.env"
+    volumes:
+     - ./pgdata:/var/lib/postgresql/18/docker # $PGDATA
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER || exit 1"]
       interval: 1s
@@ -29,4 +31,4 @@ services:
         condition: service_healthy
   
   visits_cache:
-    image: "redis:alpine"
+    image: "redis:7-alpine"
