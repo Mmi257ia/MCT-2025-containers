@@ -1,6 +1,7 @@
 import psycopg2
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
+import redis
 from os import getenv
 
 app = FastAPI()
@@ -11,6 +12,9 @@ DB_USER_NAME = getenv('POSTGRES_USER', 'postgres')
 DB_PASSWORD = getenv('POSTGRES_PASSWORD', '12345678')
 DB_PORT = getenv('DB_PORT', '5432')
 PINGS_TABLE_NAME = getenv('PINGS_TABLE_NAME', 'pings')
+
+REDIS_HOST_NAME = getenv('REDIS_HOST_NAME', 'visits_cache')
+REDIS_PORT = getenv('REDIS_PORT', '6379')
 
 @app.get('/', response_class=PlainTextResponse)
 async def root():
@@ -30,9 +34,20 @@ async def ping(request: Request):
         conn.autocommit = True
         with conn.cursor() as cursor:
             cursor.execute(f'INSERT INTO {PINGS_TABLE_NAME} (id, ip) VALUES (DEFAULT, \'{client_ip}\');')
+        try:
+            with redis.Redis(host=REDIS_HOST_NAME, port=REDIS_PORT, decode_responses=True) as r:
+                if r.get("visits") is not None: # else: init in visits(), not there
+                    r.incr("visits", 1)
+        except redis.RedisError as E:
+            print(f'Redis exception on ping(): {E}')
+        finally:
+            try:
+                if r:
+                    r.close()
+            except NameError:
+                pass
     except BaseException as E:
-        with open('log.txt', 'a') as f:
-            print(f'Exception on ping(): {E}', file=f)
+        print(f'Exception on ping(): {E}')
     finally:
         try:
             if conn:
@@ -44,6 +59,19 @@ async def ping(request: Request):
 @app.get('/visits', response_class=PlainTextResponse)
 async def visits():
     try:
+        with redis.Redis(host=REDIS_HOST_NAME, port=REDIS_PORT, decode_responses=True) as r:
+            if (cached_visits := r.get("visits")): # else: init in visits(), not there
+                return cached_visits
+    except redis.RedisError as E:
+        print(f'Redis exception on visits(): {E}')
+    finally:
+        try:
+            if r:
+                r.close()
+        except NameError:
+            pass
+    # fallthrough: no cached value
+    try:
         conn = psycopg2.connect(
             host=DB_HOST_NAME,
             database=DB_NAME,
@@ -53,10 +81,21 @@ async def visits():
         )
         with conn.cursor() as cursor:
             cursor.execute(f'SELECT COUNT(*) FROM {PINGS_TABLE_NAME};')
-            return str(int(cursor.fetchone()[0]))
+            value = str(int(cursor.fetchone()[0]))
+            try:
+                with redis.Redis(host=REDIS_HOST_NAME, port=REDIS_PORT, decode_responses=True) as r:
+                    r.set('visits', value)
+            except redis.RedisError as E:
+                print(f'Redis exception on visits(): {E}')
+            finally:
+                try:
+                    if r:
+                        r.close()
+                except NameError:
+                    pass
+            return value
     except BaseException as E:
-        with open('log.txt', 'a') as f:
-            print(f'Exception on visits(): {E}', file=f)
+        print(f'Exception on visits(): {E}')
     finally:
         try:
             if conn:

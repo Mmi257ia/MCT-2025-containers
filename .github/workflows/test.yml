@@ -53,6 +53,10 @@ jobs:
       - name: Test PostgreSQL connection
         run: |
           docker compose exec -T db pg_isready -U postgres -d pings_db
+      
+      - name: Test Redis connection
+        run: |
+          docker compose exec -T visits_cache redis-cli ping | grep -x "PONG"
 
       - name: Show logs on failure
         if: failure()
