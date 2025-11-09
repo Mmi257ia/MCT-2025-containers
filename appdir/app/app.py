@@ -5,7 +5,7 @@ from os import getenv
 app = FastAPI()
 
 DB_HOST_NAME = getenv('DB_HOST_NAME', 'db')
-DB_NAME = getenv('DB_NAME', 'pings_db')
+DB_NAME = getenv('POSTGRES_DB', 'pings_db')
 DB_USER_NAME = getenv('POSTGRES_USER', 'postgres')
 DB_PASSWORD = getenv('POSTGRES_PASSWORD', '12345678')
 DB_PORT = getenv('DB_PORT', '5432')
